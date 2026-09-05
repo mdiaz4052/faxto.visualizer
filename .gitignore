@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+dist/
+build/
+exports/
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.mp4
+godot/.godot/
