@@ -67,13 +67,21 @@ func _add_parameter(parent: Control, label_text: String, key: String, low: float
 	var slider := HSlider.new(); slider.min_value = low; slider.max_value = high; slider.step = step_value; slider.value = parameters[key]
 	slider.value_changed.connect(func(value): parameters[key] = value); parent.add_child(slider); parameter_controls[key] = slider
 
-func _dialog(mode: FileDialog.FileMode, filters: PackedStringArray, callback: Callable, title: String) -> void:
+func _dialog(mode: FileDialog.FileMode, filters: PackedStringArray, callback: Callable, title: String, start_directory := "") -> void:
 	var dialog := FileDialog.new(); dialog.file_mode = mode; dialog.access = FileDialog.ACCESS_FILESYSTEM; dialog.filters = filters; dialog.title = title
+	if not start_directory.is_empty() and DirAccess.dir_exists_absolute(start_directory):
+		dialog.current_dir = start_directory
 	dialog.file_selected.connect(func(path): callback.call(path); dialog.queue_free())
 	dialog.dir_selected.connect(func(path): callback.call(path); dialog.queue_free())
 	dialog.canceled.connect(dialog.queue_free); add_child(dialog); dialog.popup_centered_ratio(0.8)
 
-func _open_wav() -> void: _dialog(FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.wav ; WAV audio"]), _wav_selected, "Open Song")
+func _open_wav() -> void:
+	_dialog(FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.wav ; WAV audio"]), _wav_selected, "Open Song", _preferred_music_directory())
+
+func _preferred_music_directory() -> String:
+	var documents := OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)
+	var music_folder := documents.path_join("My music")
+	return music_folder if DirAccess.dir_exists_absolute(music_folder) else documents
 func _wav_selected(path: String) -> void: selected_wav = path; status.text = "Selected %s — click Analyze" % path.get_file()
 
 func _setup_analyzer() -> void:
