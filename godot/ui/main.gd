@@ -1,0 +1,332 @@
+extends Control
+
+const SignalFieldScene = preload("res://scenes/signal_field.tscn")
+var timeline := FeatureTimeline.new()
+var audio := AudioStreamPlayer.new()
+var visual: SignalField
+var status := Label.new()
+var time_label := Label.new()
+var scrubber := HSlider.new()
+var scrubber_dragging := false
+var play_button := Button.new()
+var analyze_button := Button.new()
+var setup_button := Button.new()
+var cancel_export_button := Button.new()
+var selected_wav := ""
+var manifest_path := ""
+var last_time := 0.0
+var seed_value := 42
+var parameters := {"deformation": 0.8, "impact_scale": 0.7, "element_count": 28.0}
+var parameter_controls: Dictionary = {}
+var export_directory := ""
+var exporting := false
+var export_frame_pending := false
+var export_frame := 0
+var export_fps := 30.0
+var export_width := 1280
+var export_height := 720
+var export_start_time := 0.0
+var export_end_time := 0.0
+var export_is_test := false
+var analysis_thread: Thread
+var analyzer_python := ""
+
+func _ready() -> void:
+	_build_ui()
+	set_process(true)
+
+func _build_ui() -> void:
+	add_child(audio)
+	var root := VBoxContainer.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(root)
+	var toolbar := HBoxContainer.new(); root.add_child(toolbar)
+	_add_button(toolbar, "Open WAV", _open_wav)
+	setup_button = _add_button(toolbar, "Setup Analyzer", _setup_analyzer)
+	analyze_button = _add_button(toolbar, "Analyze", _analyze)
+	play_button = _add_button(toolbar, "Play", _toggle_play)
+	var scene_choice := OptionButton.new(); scene_choice.add_item("Signal Field"); scene_choice.tooltip_text = "Scene preset"; toolbar.add_child(scene_choice)
+	_add_button(toolbar, "Save Config", _save_config)
+	_add_button(toolbar, "Load Config", _load_config)
+	_add_button(toolbar, "Test Export (5s)", _choose_test_export)
+	_add_button(toolbar, "Export Full", _choose_export)
+	cancel_export_button = _add_button(toolbar, "Cancel Export", _cancel_export)
+	cancel_export_button.disabled = true
+	status.text = "Choose a PCM WAV to begin"; status.size_flags_horizontal = Control.SIZE_EXPAND_FILL; toolbar.add_child(status)
+	var body := HSplitContainer.new(); body.size_flags_vertical = Control.SIZE_EXPAND_FILL; root.add_child(body)
+	var viewport_panel := PanelContainer.new(); viewport_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL; body.add_child(viewport_panel)
+	visual = SignalFieldScene.instantiate(); viewport_panel.add_child(visual)
+	var controls := VBoxContainer.new(); controls.custom_minimum_size.x = 260; body.add_child(controls)
+	_add_parameter(controls, "Deformation", "deformation", 0.0, 2.0)
+	_add_parameter(controls, "Impact scale", "impact_scale", 0.0, 2.0)
+	_add_parameter(controls, "Element count", "element_count", 8.0, 80.0, 1.0)
+	_add_button(controls, "Reset Parameters", _reset_parameters)
+	var timeline_row := HBoxContainer.new(); root.add_child(timeline_row)
+	scrubber.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scrubber.step = 0.001
+	scrubber.drag_started.connect(_scrub_started)
+	scrubber.drag_ended.connect(_scrub_ended)
+	scrubber.value_changed.connect(_scrub_preview)
+	timeline_row.add_child(scrubber)
+	time_label.text = "00:00.000 / 00:00.000"; timeline_row.add_child(time_label)
+
+func _add_button(parent: Control, text_value: String, callback: Callable) -> Button:
+	var button := Button.new(); button.text = text_value; button.pressed.connect(callback); parent.add_child(button); return button
+
+func _add_parameter(parent: Control, label_text: String, key: String, low: float, high: float, step_value := 0.01) -> void:
+	var label := Label.new(); label.text = label_text; parent.add_child(label)
+	var slider := HSlider.new(); slider.min_value = low; slider.max_value = high; slider.step = step_value; slider.value = parameters[key]
+	slider.value_changed.connect(func(value): parameters[key] = value); parent.add_child(slider); parameter_controls[key] = slider
+
+func _dialog(mode: FileDialog.FileMode, filters: PackedStringArray, callback: Callable, title: String, start_directory := "") -> void:
+	var dialog := FileDialog.new(); dialog.file_mode = mode; dialog.access = FileDialog.ACCESS_FILESYSTEM; dialog.filters = filters; dialog.title = title
+	if not start_directory.is_empty() and DirAccess.dir_exists_absolute(start_directory):
+		dialog.current_dir = start_directory
+	dialog.file_selected.connect(func(path): callback.call(path); dialog.queue_free())
+	dialog.dir_selected.connect(func(path): callback.call(path); dialog.queue_free())
+	dialog.canceled.connect(dialog.queue_free); add_child(dialog); dialog.popup_centered_ratio(0.8)
+
+func _open_wav() -> void:
+	_dialog(FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.wav ; WAV audio"]), _wav_selected, "Open Song", _preferred_music_directory())
+
+func _preferred_music_directory() -> String:
+	var documents := OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)
+	var music_folder := documents.path_join("My music")
+	return music_folder if DirAccess.dir_exists_absolute(music_folder) else documents
+func _wav_selected(path: String) -> void: selected_wav = path; status.text = "Selected %s — click Analyze" % path.get_file()
+
+func _setup_analyzer() -> void:
+	var system_python := _find_command("python3")
+	if system_python.is_empty():
+		status.text = "Python 3 was not found. Download Python 3 from python.org, then reopen the visualizer."
+		return
+	status.text = "Setting up analyzer… This can take a minute."
+	setup_button.disabled = true
+	analyze_button.disabled = true
+	analysis_thread = Thread.new()
+	analysis_thread.start(_run_setup.bind(system_python))
+
+func _run_setup(system_python: String) -> void:
+	var environment_dir := ProjectSettings.globalize_path("user://analyzer-environment")
+	var environment_python := environment_dir.path_join("bin/python3")
+	var output: Array[String] = []
+	var code := OS.execute(system_python, PackedStringArray(["-m", "venv", environment_dir]), output, true)
+	if code == 0:
+		var requirements := ProjectSettings.globalize_path("res://../analyzer/requirements-lock.txt")
+		code = OS.execute(environment_python, PackedStringArray(["-m", "pip", "install", "--disable-pip-version-check", "-r", requirements]), output, true)
+	call_deferred("_setup_finished", code, output, environment_python)
+
+func _setup_finished(code: int, output: Array[String], environment_python: String) -> void:
+	_finish_worker()
+	setup_button.disabled = false
+	analyze_button.disabled = false
+	if code != 0:
+		status.text = "Analyzer setup failed: %s" % " ".join(output)
+		return
+	analyzer_python = environment_python
+	status.text = "Analyzer ready — choose a WAV and click Analyze"
+
+func _analyze() -> void:
+	if selected_wav.is_empty(): status.text = "Choose a WAV first"; return
+	status.text = "Analyzing…"
+	analyze_button.disabled = true
+	manifest_path = "user://%s.song_manifest.json" % selected_wav.get_file().get_basename()
+	var python := _configured_analyzer_python()
+	if python.is_empty():
+		status.text = "Analyzer is not set up. Click Setup Analyzer first."
+		analyze_button.disabled = false
+		return
+	var cli := ProjectSettings.globalize_path("res://../analyzer/src/faxto_analyzer/cli.py")
+	analysis_thread = Thread.new()
+	analysis_thread.start(_run_analysis.bind(python, cli, selected_wav, ProjectSettings.globalize_path(manifest_path)))
+
+func _run_analysis(python: String, cli: String, wav_path: String, output_path: String) -> void:
+	var output: Array[String] = []
+	var code := OS.execute(python, PackedStringArray([cli, wav_path, "--output", output_path]), output, true)
+	call_deferred("_analysis_finished", code, output)
+
+func _analysis_finished(code: int, output: Array[String]) -> void:
+	_finish_worker()
+	analyze_button.disabled = false
+	if code != 0:
+		var details := " ".join(output)
+		if "No module named 'numpy'" in details:
+			status.text = "Analyzer dependency is missing. Click Setup Analyzer, then try again."
+		else:
+			status.text = "Analysis failed: %s" % details
+		return
+	_load_manifest(manifest_path)
+
+func _finish_worker() -> void:
+	if analysis_thread != null:
+		analysis_thread.wait_to_finish()
+		analysis_thread = null
+
+func _configured_analyzer_python() -> String:
+	if not analyzer_python.is_empty() and FileAccess.file_exists(analyzer_python):
+		return analyzer_python
+	var environment_python := ProjectSettings.globalize_path("user://analyzer-environment/bin/python3")
+	if FileAccess.file_exists(environment_python):
+		analyzer_python = environment_python
+		return analyzer_python
+	return _find_command("python3")
+
+func _load_manifest(path: String) -> void:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null: status.text = "Could not read manifest"; return
+	var parsed = JSON.parse_string(file.get_as_text())
+	if typeof(parsed) != TYPE_DICTIONARY: status.text = "Malformed manifest JSON"; return
+	var error := timeline.load_manifest(parsed)
+	if not error.is_empty(): status.text = error; return
+	scrubber.max_value = timeline.duration
+	var stream = AudioStreamWAV.load_from_file(selected_wav)
+	if stream == null: status.text = "The analyzed WAV could not be loaded for playback"; return
+	audio.stream = stream; status.text = "Ready — %s" % selected_wav.get_file(); _evaluate(0.0)
+
+func _toggle_play() -> void:
+	if audio.stream == null: status.text = "Analyze a WAV before playback"; return
+	if audio.playing: audio.stream_paused = not audio.stream_paused
+	else: audio.play(scrubber.value)
+	play_button.text = "Play" if audio.stream_paused else "Pause"
+
+func _scrub_started() -> void:
+	scrubber_dragging = true
+
+func _scrub_preview(value: float) -> void:
+	if scrubber_dragging:
+		_evaluate(value)
+
+func _scrub_ended(_changed: bool) -> void:
+	scrubber_dragging = false
+	if audio.stream != null:
+		var was_active := audio.playing and not audio.stream_paused
+		audio.play(scrubber.value); audio.stream_paused = not was_active
+	last_time = scrubber.value; _evaluate(scrubber.value)
+
+func _process(_delta: float) -> void:
+	if exporting:
+		if not export_frame_pending:
+			_export_next_frame()
+		return
+	if audio.playing and not audio.stream_paused:
+		var current := audio.get_playback_position()
+		if not scrubber_dragging:
+			scrubber.set_value_no_signal(current)
+			_evaluate(current)
+
+func _evaluate(song_time: float) -> void:
+	if timeline.duration <= 0.0: return
+	visual.set_visual_context(StateEvaluator.evaluate(timeline, song_time, last_time, seed_value, parameters))
+	time_label.text = "%s / %s" % [_format_time(song_time), _format_time(timeline.duration)]; last_time = song_time
+
+func _format_time(value: float) -> String: return "%02d:%06.3f" % [int(value) / 60, fmod(value, 60.0)]
+
+func _find_command(command: String) -> String:
+	var separator := ";" if OS.get_name() == "Windows" else ":"
+	for directory in OS.get_environment("PATH").split(separator, false):
+		var candidate := directory.path_join(command)
+		if FileAccess.file_exists(candidate):
+			return candidate
+		if OS.get_name() == "Windows" and FileAccess.file_exists(candidate + ".exe"):
+			return candidate + ".exe"
+	return ""
+
+func _reset_parameters() -> void:
+	parameters = {"deformation": 0.8, "impact_scale": 0.7, "element_count": 28.0}
+	for key in parameter_controls: parameter_controls[key].value = parameters[key]
+
+func _save_config() -> void: _dialog(FileDialog.FILE_MODE_SAVE_FILE, PackedStringArray(["*.json ; Visual config"]), _write_config, "Save Visual Configuration")
+func _write_config(path: String) -> void:
+	var config := {"schema_version": "0.1.0", "scene": "signal_field", "seed": seed_value, "parameters": parameters, "mappings": {}, "authored_cues": [], "export": {"width": 1280, "height": 720, "fps": export_fps}}
+	var file := FileAccess.open(path, FileAccess.WRITE); file.store_string(JSON.stringify(config, "  ") + "\n"); status.text = "Configuration saved"
+
+func _load_config() -> void: _dialog(FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.json ; Visual config"]), _read_config, "Load Visual Configuration")
+func _read_config(path: String) -> void:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		status.text = "Could not read visual configuration"
+		return
+	var config = JSON.parse_string(file.get_as_text())
+	if typeof(config) != TYPE_DICTIONARY or config.get("schema_version") != "0.1.0" or config.get("scene") != "signal_field": status.text = "Unsupported or malformed visual configuration"; return
+	seed_value = int(config.get("seed", 42)); parameters.merge(config.get("parameters", {}), true)
+	for key in parameter_controls:
+		if parameters.has(key):
+			parameter_controls[key].value = parameters[key]
+	status.text = "Configuration loaded"; _evaluate(scrubber.value)
+
+func _choose_export() -> void:
+	if timeline.duration <= 0.0: status.text = "Analyze a WAV before export"; return
+	export_start_time = 0.0
+	export_end_time = timeline.duration
+	export_is_test = false
+	_dialog(FileDialog.FILE_MODE_OPEN_DIR, PackedStringArray(), _start_export, "Choose Export Folder")
+
+func _choose_test_export() -> void:
+	if timeline.duration <= 0.0: status.text = "Analyze a WAV before export"; return
+	export_start_time = minf(scrubber.value, maxf(0.0, timeline.duration - 0.1))
+	export_end_time = minf(timeline.duration, export_start_time + 5.0)
+	export_is_test = true
+	_dialog(FileDialog.FILE_MODE_OPEN_DIR, PackedStringArray(), _start_export, "Choose Test Export Folder")
+
+func _start_export(path: String) -> void:
+	var timestamp := Time.get_datetime_string_from_system().replace(":", "-")
+	var folder_name := "faxto_test_frames_%s" % timestamp if export_is_test else "faxto_frames_%s" % timestamp
+	export_directory = path.path_join(folder_name)
+	DirAccess.make_dir_recursive_absolute(export_directory)
+	var ignore_file := FileAccess.open(export_directory.path_join(".gdignore"), FileAccess.WRITE)
+	if ignore_file != null:
+		ignore_file.store_string("# Keep generated video frames out of Godot's asset importer.\n")
+	export_frame = 0
+	export_frame_pending = false
+	exporting = true
+	cancel_export_button.disabled = false
+	audio.stop()
+	status.text = "Exporting %0.1f seconds…" % (export_end_time - export_start_time)
+
+func _cancel_export() -> void:
+	if not exporting:
+		return
+	exporting = false
+	export_frame_pending = false
+	cancel_export_button.disabled = true
+	status.text = "Export cancelled. Partial frames remain in %s" % export_directory
+
+func _export_next_frame() -> void:
+	export_frame_pending = true
+	var t := export_start_time + StateEvaluator.frame_time(export_frame, export_fps)
+	if t >= export_end_time:
+		exporting = false
+		export_frame_pending = false
+		cancel_export_button.disabled = true
+		_assemble_video()
+		return
+	_evaluate(t); await RenderingServer.frame_post_draw
+	if not exporting:
+		return
+	var viewport_image := get_viewport().get_texture().get_image()
+	var visual_rect := Rect2i(Vector2i(visual.global_position), Vector2i(visual.size))
+	var image := viewport_image.get_region(visual_rect)
+	image.resize(export_width, export_height, Image.INTERPOLATE_LANCZOS)
+	var error := image.save_png(export_directory.path_join("frame_%06d.png" % export_frame))
+	if error != OK:
+		exporting = false
+		export_frame_pending = false
+		cancel_export_button.disabled = true
+		status.text = "Frame export failed: %s" % error_string(error)
+		return
+	export_frame += 1
+	export_frame_pending = false
+	status.text = "Exporting frame %d" % export_frame
+
+func _exit_tree() -> void:
+	if analysis_thread != null:
+		analysis_thread.wait_to_finish()
+
+func _assemble_video() -> void:
+	var ffmpeg := _find_command("ffmpeg")
+	if ffmpeg.is_empty(): status.text = "Frames exported. FFmpeg was not found, so video assembly was skipped."; return
+	var output_name := "faxto_visualizer_test.mp4" if export_is_test else "faxto_visualizer.mp4"
+	var output_path := export_directory.get_base_dir().path_join(output_name)
+	var duration := export_end_time - export_start_time
+	var args := PackedStringArray(["-y", "-framerate", str(export_fps), "-i", export_directory.path_join("frame_%06d.png"), "-ss", str(export_start_time), "-t", str(duration), "-i", selected_wav, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", output_path])
+	var output: Array[String] = []
+	var code := OS.execute(ffmpeg, args, output, true)
+	status.text = "Export complete: %s" % output_path if code == 0 else "Frames exported, but FFmpeg assembly failed: %s" % " ".join(output)

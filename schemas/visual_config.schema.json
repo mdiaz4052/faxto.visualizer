@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://faxto.music/schemas/visual_config/0.1.0",
+  "type": "object",
+  "required": ["schema_version", "scene", "seed", "parameters", "export"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "scene": {"type": "string"},
+    "seed": {"type": "integer"},
+    "parameters": {"type": "object", "additionalProperties": {"type": ["number", "boolean", "string"]}},
+    "mappings": {"type": "object"},
+    "authored_cues": {"type": "array"},
+    "export": {"type": "object", "required": ["width", "height", "fps"], "properties": {"width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}, "fps": {"type": "number", "exclusiveMinimum": 0}}}
+  }
+}

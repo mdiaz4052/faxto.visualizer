@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://faxto.music/schemas/song_manifest/0.1.0",
+  "title": "FaXto Song Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "analyzer", "source", "analysis_settings", "estimates", "events", "curves", "structure"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "analyzer": {"type": "object", "required": ["name", "version"], "properties": {"name": {"type": "string"}, "version": {"type": "string"}}},
+    "source": {"type": "object", "required": ["id", "filename", "sha256", "duration_seconds", "sample_rate_hz", "channel_count"], "properties": {
+      "id": {"type": "string"}, "filename": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "duration_seconds": {"type": "number", "exclusiveMinimum": 0}, "sample_rate_hz": {"type": "integer", "minimum": 1}, "channel_count": {"type": "integer", "minimum": 1}
+    }},
+    "analysis_settings": {"type": "object"},
+    "estimates": {"type": "object", "required": ["tempo_bpm", "tempo_confidence"], "properties": {"tempo_bpm": {"type": ["number", "null"]}, "tempo_confidence": {"type": "number", "minimum": 0, "maximum": 1}, "tonal_center": {"type": ["string", "null"]}, "tonal_center_confidence": {"type": "number", "minimum": 0, "maximum": 1}}},
+    "events": {"type": "object", "required": ["beats", "onsets", "downbeats"], "properties": {"beats": {"$ref": "#/$defs/times"}, "onsets": {"$ref": "#/$defs/times"}, "downbeats": {"$ref": "#/$defs/times"}}},
+    "curves": {"type": "array", "items": {"type": "object", "required": ["name", "source_id", "unit", "sample_interval_seconds", "values"], "properties": {"name": {"type": "string"}, "source_id": {"type": "string"}, "unit": {"type": "string"}, "sample_interval_seconds": {"type": "number", "exclusiveMinimum": 0}, "values": {"type": "array", "items": {"type": "number"}}}}},
+    "structure": {"type": "object", "required": ["sections", "recurrences", "manual_annotations"], "properties": {"sections": {"type": "array"}, "recurrences": {"type": "array"}, "manual_annotations": {"type": "array"}}}
+  },
+  "$defs": {"times": {"type": "array", "items": {"type": "number", "minimum": 0}}}
+}

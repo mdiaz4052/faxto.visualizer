@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "faxto-analyzer"
+version = "0.1.0"
+description = "Deterministic offline audio analysis for FaXto Visualizer"
+requires-python = ">=3.12"
+dependencies = ["numpy>=2.0,<3"]
+
+[project.scripts]
+faxto-analyze = "faxto_analyzer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
