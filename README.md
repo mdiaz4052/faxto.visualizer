@@ -21,7 +21,7 @@ python3 -m venv .venv
 python -m pip install -e analyzer
 ```
 
-For normal use, open `godot/project.godot` in Godot and run the project. Choose **Open WAV**, then **Analyze**, use playback and timeline controls, tune the Signal Field parameters, save/load a visual configuration, and choose **Export**. Terminal use remains necessary only for development and automated tests.
+For normal use, open `godot/project.godot` in Godot and run the project. On first use, choose **Setup Analyzer**; the GUI creates its private Python environment and installs the pinned DSP dependency. Then choose **Open WAV** and **Analyze**, use playback and timeline controls, tune the Signal Field parameters, save/load a visual configuration, and choose **Export**. Terminal use remains necessary only for development and automated tests.
 
 ## Development checks
 

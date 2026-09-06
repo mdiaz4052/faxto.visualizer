@@ -9,6 +9,7 @@ var time_label := Label.new()
 var scrubber := HSlider.new()
 var play_button := Button.new()
 var analyze_button := Button.new()
+var setup_button := Button.new()
 var selected_wav := ""
 var manifest_path := ""
 var last_time := 0.0
@@ -21,6 +22,7 @@ var export_frame_pending := false
 var export_frame := 0
 var export_fps := 30.0
 var analysis_thread: Thread
+var analyzer_python := ""
 
 func _ready() -> void:
 	_build_ui()
@@ -31,6 +33,7 @@ func _build_ui() -> void:
 	var root := VBoxContainer.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(root)
 	var toolbar := HBoxContainer.new(); root.add_child(toolbar)
 	_add_button(toolbar, "Open WAV", _open_wav)
+	setup_button = _add_button(toolbar, "Setup Analyzer", _setup_analyzer)
 	analyze_button = _add_button(toolbar, "Analyze", _analyze)
 	play_button = _add_button(toolbar, "Play", _toggle_play)
 	var scene_choice := OptionButton.new(); scene_choice.add_item("Signal Field"); scene_choice.tooltip_text = "Scene preset"; toolbar.add_child(scene_choice)
@@ -67,14 +70,45 @@ func _dialog(mode: FileDialog.FileMode, filters: PackedStringArray, callback: Ca
 func _open_wav() -> void: _dialog(FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.wav ; WAV audio"]), _wav_selected, "Open Song")
 func _wav_selected(path: String) -> void: selected_wav = path; status.text = "Selected %s — click Analyze" % path.get_file()
 
+func _setup_analyzer() -> void:
+	var system_python := _find_command("python3")
+	if system_python.is_empty():
+		status.text = "Python 3 was not found. Download Python 3 from python.org, then reopen the visualizer."
+		return
+	status.text = "Setting up analyzer… This can take a minute."
+	setup_button.disabled = true
+	analyze_button.disabled = true
+	analysis_thread = Thread.new()
+	analysis_thread.start(_run_setup.bind(system_python))
+
+func _run_setup(system_python: String) -> void:
+	var environment_dir := ProjectSettings.globalize_path("user://analyzer-environment")
+	var environment_python := environment_dir.path_join("bin/python3")
+	var output: Array[String] = []
+	var code := OS.execute(system_python, PackedStringArray(["-m", "venv", environment_dir]), output, true)
+	if code == 0:
+		var requirements := ProjectSettings.globalize_path("res://../analyzer/requirements-lock.txt")
+		code = OS.execute(environment_python, PackedStringArray(["-m", "pip", "install", "--disable-pip-version-check", "-r", requirements]), output, true)
+	call_deferred("_setup_finished", code, output, environment_python)
+
+func _setup_finished(code: int, output: Array[String], environment_python: String) -> void:
+	_finish_worker()
+	setup_button.disabled = false
+	analyze_button.disabled = false
+	if code != 0:
+		status.text = "Analyzer setup failed: %s" % " ".join(output)
+		return
+	analyzer_python = environment_python
+	status.text = "Analyzer ready — choose a WAV and click Analyze"
+
 func _analyze() -> void:
 	if selected_wav.is_empty(): status.text = "Choose a WAV first"; return
 	status.text = "Analyzing…"
 	analyze_button.disabled = true
 	manifest_path = "user://%s.song_manifest.json" % selected_wav.get_file().get_basename()
-	var python := _find_command("python3")
+	var python := _configured_analyzer_python()
 	if python.is_empty():
-		status.text = "Python 3 was not found. Install Python before analyzing audio."
+		status.text = "Analyzer is not set up. Click Setup Analyzer first."
 		analyze_button.disabled = false
 		return
 	var cli := ProjectSettings.globalize_path("res://../analyzer/src/faxto_analyzer/cli.py")
@@ -87,14 +121,30 @@ func _run_analysis(python: String, cli: String, wav_path: String, output_path: S
 	call_deferred("_analysis_finished", code, output)
 
 func _analysis_finished(code: int, output: Array[String]) -> void:
+	_finish_worker()
+	analyze_button.disabled = false
+	if code != 0:
+		var details := " ".join(output)
+		if "No module named 'numpy'" in details:
+			status.text = "Analyzer dependency is missing. Click Setup Analyzer, then try again."
+		else:
+			status.text = "Analysis failed: %s" % details
+		return
+	_load_manifest(manifest_path)
+
+func _finish_worker() -> void:
 	if analysis_thread != null:
 		analysis_thread.wait_to_finish()
 		analysis_thread = null
-	analyze_button.disabled = false
-	if code != 0:
-		status.text = "Analysis failed: %s" % " ".join(output)
-		return
-	_load_manifest(manifest_path)
+
+func _configured_analyzer_python() -> String:
+	if not analyzer_python.is_empty() and FileAccess.file_exists(analyzer_python):
+		return analyzer_python
+	var environment_python := ProjectSettings.globalize_path("user://analyzer-environment/bin/python3")
+	if FileAccess.file_exists(environment_python):
+		analyzer_python = environment_python
+		return analyzer_python
+	return _find_command("python3")
 
 func _load_manifest(path: String) -> void:
 	var file := FileAccess.open(path, FileAccess.READ)

@@ -12,3 +12,5 @@ The Godot project targets Godot 4.7.2 and the compatibility renderer. CI imports
 Use the regular Godot build. The `.NET` edition exists for C# projects and is not required because FaXto Visualizer uses GDScript.
 
 `analyzer/requirements-lock.txt` reproduces the tested DSP dependency. `pyproject.toml` permits compatible NumPy 2.x updates for ordinary development.
+
+The GUI's **Setup Analyzer** action creates a private virtual environment in Godot's per-user application-data directory and installs the pinned requirements there. It does not alter the system Python environment. Python 3 itself must already exist; missing Python is reported in the interface.
