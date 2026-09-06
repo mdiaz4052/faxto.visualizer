@@ -7,6 +7,7 @@ var visual: SignalField
 var status := Label.new()
 var time_label := Label.new()
 var scrubber := HSlider.new()
+var scrubber_dragging := false
 var play_button := Button.new()
 var analyze_button := Button.new()
 var setup_button := Button.new()
@@ -50,7 +51,12 @@ func _build_ui() -> void:
 	_add_parameter(controls, "Element count", "element_count", 8.0, 80.0, 1.0)
 	_add_button(controls, "Reset Parameters", _reset_parameters)
 	var timeline_row := HBoxContainer.new(); root.add_child(timeline_row)
-	scrubber.size_flags_horizontal = Control.SIZE_EXPAND_FILL; scrubber.step = 0.001; scrubber.drag_ended.connect(_scrub_ended); timeline_row.add_child(scrubber)
+	scrubber.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scrubber.step = 0.001
+	scrubber.drag_started.connect(_scrub_started)
+	scrubber.drag_ended.connect(_scrub_ended)
+	scrubber.value_changed.connect(_scrub_preview)
+	timeline_row.add_child(scrubber)
 	time_label.text = "00:00.000 / 00:00.000"; timeline_row.add_child(time_label)
 
 func _add_button(parent: Control, text_value: String, callback: Callable) -> Button:
@@ -164,7 +170,15 @@ func _toggle_play() -> void:
 	else: audio.play(scrubber.value)
 	play_button.text = "Play" if audio.stream_paused else "Pause"
 
+func _scrub_started() -> void:
+	scrubber_dragging = true
+
+func _scrub_preview(value: float) -> void:
+	if scrubber_dragging:
+		_evaluate(value)
+
 func _scrub_ended(_changed: bool) -> void:
+	scrubber_dragging = false
 	if audio.stream != null:
 		var was_active := audio.playing and not audio.stream_paused
 		audio.play(scrubber.value); audio.stream_paused = not was_active
@@ -176,7 +190,10 @@ func _process(_delta: float) -> void:
 			_export_next_frame()
 		return
 	if audio.playing and not audio.stream_paused:
-		var current := audio.get_playback_position(); scrubber.set_value_no_signal(current); _evaluate(current)
+		var current := audio.get_playback_position()
+		if not scrubber_dragging:
+			scrubber.set_value_no_signal(current)
+			_evaluate(current)
 
 func _evaluate(song_time: float) -> void:
 	if timeline.duration <= 0.0: return
