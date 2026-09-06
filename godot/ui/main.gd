@@ -8,6 +8,7 @@ var status := Label.new()
 var time_label := Label.new()
 var scrubber := HSlider.new()
 var play_button := Button.new()
+var analyze_button := Button.new()
 var selected_wav := ""
 var manifest_path := ""
 var last_time := 0.0
@@ -16,8 +17,10 @@ var parameters := {"deformation": 0.8, "impact_scale": 0.7, "element_count": 28.
 var parameter_controls: Dictionary = {}
 var export_directory := ""
 var exporting := false
+var export_frame_pending := false
 var export_frame := 0
 var export_fps := 30.0
+var analysis_thread: Thread
 
 func _ready() -> void:
 	_build_ui()
@@ -28,7 +31,7 @@ func _build_ui() -> void:
 	var root := VBoxContainer.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(root)
 	var toolbar := HBoxContainer.new(); root.add_child(toolbar)
 	_add_button(toolbar, "Open WAV", _open_wav)
-	_add_button(toolbar, "Analyze", _analyze)
+	analyze_button = _add_button(toolbar, "Analyze", _analyze)
 	play_button = _add_button(toolbar, "Play", _toggle_play)
 	var scene_choice := OptionButton.new(); scene_choice.add_item("Signal Field"); scene_choice.tooltip_text = "Scene preset"; toolbar.add_child(scene_choice)
 	_add_button(toolbar, "Save Config", _save_config)
@@ -67,13 +70,30 @@ func _wav_selected(path: String) -> void: selected_wav = path; status.text = "Se
 func _analyze() -> void:
 	if selected_wav.is_empty(): status.text = "Choose a WAV first"; return
 	status.text = "Analyzing…"
+	analyze_button.disabled = true
 	manifest_path = "user://%s.song_manifest.json" % selected_wav.get_file().get_basename()
-	var python := OS.find_executable("python3")
-	if python.is_empty(): status.text = "Python 3 was not found. Install the analyzer dependency."; return
+	var python := _find_command("python3")
+	if python.is_empty():
+		status.text = "Python 3 was not found. Install Python before analyzing audio."
+		analyze_button.disabled = false
+		return
 	var cli := ProjectSettings.globalize_path("res://../analyzer/src/faxto_analyzer/cli.py")
+	analysis_thread = Thread.new()
+	analysis_thread.start(_run_analysis.bind(python, cli, selected_wav, ProjectSettings.globalize_path(manifest_path)))
+
+func _run_analysis(python: String, cli: String, wav_path: String, output_path: String) -> void:
 	var output: Array[String] = []
-	var code := OS.execute(python, PackedStringArray([cli, selected_wav, "--output", ProjectSettings.globalize_path(manifest_path)]), output, true)
-	if code != 0: status.text = "Analysis failed: %s" % " ".join(output); return
+	var code := OS.execute(python, PackedStringArray([cli, wav_path, "--output", output_path]), output, true)
+	call_deferred("_analysis_finished", code, output)
+
+func _analysis_finished(code: int, output: Array[String]) -> void:
+	if analysis_thread != null:
+		analysis_thread.wait_to_finish()
+		analysis_thread = null
+	analyze_button.disabled = false
+	if code != 0:
+		status.text = "Analysis failed: %s" % " ".join(output)
+		return
 	_load_manifest(manifest_path)
 
 func _load_manifest(path: String) -> void:
@@ -101,7 +121,10 @@ func _scrub_ended(_changed: bool) -> void:
 	last_time = scrubber.value; _evaluate(scrubber.value)
 
 func _process(_delta: float) -> void:
-	if exporting: _export_next_frame(); return
+	if exporting:
+		if not export_frame_pending:
+			_export_next_frame()
+		return
 	if audio.playing and not audio.stream_paused:
 		var current := audio.get_playback_position(); scrubber.set_value_no_signal(current); _evaluate(current)
 
@@ -111,6 +134,16 @@ func _evaluate(song_time: float) -> void:
 	time_label.text = "%s / %s" % [_format_time(song_time), _format_time(timeline.duration)]; last_time = song_time
 
 func _format_time(value: float) -> String: return "%02d:%06.3f" % [int(value) / 60, fmod(value, 60.0)]
+
+func _find_command(command: String) -> String:
+	var separator := ";" if OS.get_name() == "Windows" else ":"
+	for directory in OS.get_environment("PATH").split(separator, false):
+		var candidate := directory.path_join(command)
+		if FileAccess.file_exists(candidate):
+			return candidate
+		if OS.get_name() == "Windows" and FileAccess.file_exists(candidate + ".exe"):
+			return candidate + ".exe"
+	return ""
 
 func _reset_parameters() -> void:
 	parameters = {"deformation": 0.8, "impact_scale": 0.7, "element_count": 28.0}
@@ -141,20 +174,34 @@ func _choose_export() -> void:
 
 func _start_export(path: String) -> void:
 	export_directory = path.path_join("faxto_frames"); DirAccess.make_dir_recursive_absolute(export_directory)
-	export_frame = 0; exporting = true; audio.stop(); status.text = "Exporting deterministic frames…"
+	export_frame = 0; export_frame_pending = false; exporting = true; audio.stop(); status.text = "Exporting deterministic frames…"
 
 func _export_next_frame() -> void:
+	export_frame_pending = true
 	var t := StateEvaluator.frame_time(export_frame, export_fps)
 	if t > timeline.duration:
-		exporting = false; _assemble_video(); return
+		exporting = false
+		export_frame_pending = false
+		_assemble_video()
+		return
 	_evaluate(t); await RenderingServer.frame_post_draw
 	var image := get_viewport().get_texture().get_image()
 	var error := image.save_png(export_directory.path_join("frame_%06d.png" % export_frame))
-	if error != OK: exporting = false; status.text = "Frame export failed: %s" % error_string(error); return
-	export_frame += 1; status.text = "Exporting frame %d" % export_frame
+	if error != OK:
+		exporting = false
+		export_frame_pending = false
+		status.text = "Frame export failed: %s" % error_string(error)
+		return
+	export_frame += 1
+	export_frame_pending = false
+	status.text = "Exporting frame %d" % export_frame
+
+func _exit_tree() -> void:
+	if analysis_thread != null:
+		analysis_thread.wait_to_finish()
 
 func _assemble_video() -> void:
-	var ffmpeg := OS.find_executable("ffmpeg")
+	var ffmpeg := _find_command("ffmpeg")
 	if ffmpeg.is_empty(): status.text = "Frames exported. FFmpeg was not found, so video assembly was skipped."; return
 	var output_path := export_directory.get_base_dir().path_join("faxto_visualizer.mp4")
 	var args := PackedStringArray(["-y", "-framerate", str(export_fps), "-i", export_directory.path_join("frame_%06d.png"), "-i", selected_wav, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", output_path])

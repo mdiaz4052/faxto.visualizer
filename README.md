@@ -8,7 +8,7 @@ Phase 0 establishes the vertical slice:
 
 ## Requirements
 
-- Godot 4.3 or newer in the 4.x line
+- Godot 4.7.2 (regular/GDScript build; the .NET edition is unnecessary)
 - Python 3.12+
 - NumPy 2.0+
 - FFmpeg 6+ (optional for assembling exported PNG frames with the source audio)
