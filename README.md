@@ -23,6 +23,8 @@ python -m pip install -e analyzer
 
 For normal use, open `godot/project.godot` in Godot and run the project. On first use, choose **Setup Analyzer**; the GUI creates its private Python environment and installs the pinned DSP dependency. Then choose **Open WAV** and **Analyze**, use playback and timeline controls, tune the Signal Field parameters, save/load a visual configuration, and choose **Export**. Terminal use remains necessary only for development and automated tests.
 
+The application opens maximized and its GUI/scene viewport follows the available window size. Export frame directories contain a `.gdignore` marker so Godot does not generate asset-import sidecars for rendered PNGs.
+
 ## Development checks
 
 ```bash

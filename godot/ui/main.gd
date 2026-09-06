@@ -271,6 +271,9 @@ func _start_export(path: String) -> void:
 	var folder_name := "faxto_test_frames_%s" % timestamp if export_is_test else "faxto_frames_%s" % timestamp
 	export_directory = path.path_join(folder_name)
 	DirAccess.make_dir_recursive_absolute(export_directory)
+	var ignore_file := FileAccess.open(export_directory.path_join(".gdignore"), FileAccess.WRITE)
+	if ignore_file != null:
+		ignore_file.store_string("# Keep generated video frames out of Godot's asset importer.\n")
 	export_frame = 0
 	export_frame_pending = false
 	exporting = true
