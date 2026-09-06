@@ -11,6 +11,7 @@ var scrubber_dragging := false
 var play_button := Button.new()
 var analyze_button := Button.new()
 var setup_button := Button.new()
+var cancel_export_button := Button.new()
 var selected_wav := ""
 var manifest_path := ""
 var last_time := 0.0
@@ -22,6 +23,11 @@ var exporting := false
 var export_frame_pending := false
 var export_frame := 0
 var export_fps := 30.0
+var export_width := 1280
+var export_height := 720
+var export_start_time := 0.0
+var export_end_time := 0.0
+var export_is_test := false
 var analysis_thread: Thread
 var analyzer_python := ""
 
@@ -40,7 +46,10 @@ func _build_ui() -> void:
 	var scene_choice := OptionButton.new(); scene_choice.add_item("Signal Field"); scene_choice.tooltip_text = "Scene preset"; toolbar.add_child(scene_choice)
 	_add_button(toolbar, "Save Config", _save_config)
 	_add_button(toolbar, "Load Config", _load_config)
-	_add_button(toolbar, "Export", _choose_export)
+	_add_button(toolbar, "Test Export (5s)", _choose_test_export)
+	_add_button(toolbar, "Export Full", _choose_export)
+	cancel_export_button = _add_button(toolbar, "Cancel Export", _cancel_export)
+	cancel_export_button.disabled = true
 	status.text = "Choose a PCM WAV to begin"; status.size_flags_horizontal = Control.SIZE_EXPAND_FILL; toolbar.add_child(status)
 	var body := HSplitContainer.new(); body.size_flags_vertical = Control.SIZE_EXPAND_FILL; root.add_child(body)
 	var viewport_panel := PanelContainer.new(); viewport_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL; body.add_child(viewport_panel)
@@ -245,26 +254,59 @@ func _read_config(path: String) -> void:
 
 func _choose_export() -> void:
 	if timeline.duration <= 0.0: status.text = "Analyze a WAV before export"; return
+	export_start_time = 0.0
+	export_end_time = timeline.duration
+	export_is_test = false
 	_dialog(FileDialog.FILE_MODE_OPEN_DIR, PackedStringArray(), _start_export, "Choose Export Folder")
 
+func _choose_test_export() -> void:
+	if timeline.duration <= 0.0: status.text = "Analyze a WAV before export"; return
+	export_start_time = minf(scrubber.value, maxf(0.0, timeline.duration - 0.1))
+	export_end_time = minf(timeline.duration, export_start_time + 5.0)
+	export_is_test = true
+	_dialog(FileDialog.FILE_MODE_OPEN_DIR, PackedStringArray(), _start_export, "Choose Test Export Folder")
+
 func _start_export(path: String) -> void:
-	export_directory = path.path_join("faxto_frames"); DirAccess.make_dir_recursive_absolute(export_directory)
-	export_frame = 0; export_frame_pending = false; exporting = true; audio.stop(); status.text = "Exporting deterministic frames…"
+	var timestamp := Time.get_datetime_string_from_system().replace(":", "-")
+	var folder_name := "faxto_test_frames_%s" % timestamp if export_is_test else "faxto_frames_%s" % timestamp
+	export_directory = path.path_join(folder_name)
+	DirAccess.make_dir_recursive_absolute(export_directory)
+	export_frame = 0
+	export_frame_pending = false
+	exporting = true
+	cancel_export_button.disabled = false
+	audio.stop()
+	status.text = "Exporting %0.1f seconds…" % (export_end_time - export_start_time)
+
+func _cancel_export() -> void:
+	if not exporting:
+		return
+	exporting = false
+	export_frame_pending = false
+	cancel_export_button.disabled = true
+	status.text = "Export cancelled. Partial frames remain in %s" % export_directory
 
 func _export_next_frame() -> void:
 	export_frame_pending = true
-	var t := StateEvaluator.frame_time(export_frame, export_fps)
-	if t > timeline.duration:
+	var t := export_start_time + StateEvaluator.frame_time(export_frame, export_fps)
+	if t >= export_end_time:
 		exporting = false
 		export_frame_pending = false
+		cancel_export_button.disabled = true
 		_assemble_video()
 		return
 	_evaluate(t); await RenderingServer.frame_post_draw
-	var image := get_viewport().get_texture().get_image()
+	if not exporting:
+		return
+	var viewport_image := get_viewport().get_texture().get_image()
+	var visual_rect := Rect2i(Vector2i(visual.global_position), Vector2i(visual.size))
+	var image := viewport_image.get_region(visual_rect)
+	image.resize(export_width, export_height, Image.INTERPOLATE_LANCZOS)
 	var error := image.save_png(export_directory.path_join("frame_%06d.png" % export_frame))
 	if error != OK:
 		exporting = false
 		export_frame_pending = false
+		cancel_export_button.disabled = true
 		status.text = "Frame export failed: %s" % error_string(error)
 		return
 	export_frame += 1
@@ -278,8 +320,10 @@ func _exit_tree() -> void:
 func _assemble_video() -> void:
 	var ffmpeg := _find_command("ffmpeg")
 	if ffmpeg.is_empty(): status.text = "Frames exported. FFmpeg was not found, so video assembly was skipped."; return
-	var output_path := export_directory.get_base_dir().path_join("faxto_visualizer.mp4")
-	var args := PackedStringArray(["-y", "-framerate", str(export_fps), "-i", export_directory.path_join("frame_%06d.png"), "-i", selected_wav, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", output_path])
+	var output_name := "faxto_visualizer_test.mp4" if export_is_test else "faxto_visualizer.mp4"
+	var output_path := export_directory.get_base_dir().path_join(output_name)
+	var duration := export_end_time - export_start_time
+	var args := PackedStringArray(["-y", "-framerate", str(export_fps), "-i", export_directory.path_join("frame_%06d.png"), "-ss", str(export_start_time), "-t", str(duration), "-i", selected_wav, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", output_path])
 	var output: Array[String] = []
 	var code := OS.execute(ffmpeg, args, output, true)
 	status.text = "Export complete: %s" % output_path if code == 0 else "Frames exported, but FFmpeg assembly failed: %s" % " ".join(output)
