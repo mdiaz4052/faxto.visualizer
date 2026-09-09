@@ -82,8 +82,9 @@ def _build_native(destination, work, notices):
     config = subprocess.check_output([str(destination / "bin/ffmpeg"), "-buildconf"], stderr=subprocess.STDOUT, text=True)
     # Configure's license statement is also checked, not inferred from flags.
     license_text = subprocess.check_output([str(destination / "bin/ffmpeg"), "-L"], stderr=subprocess.STDOUT, text=True)
-    if "GNU Lesser General Public License" not in license_text or "--enable-gpl" in config or "--enable-nonfree" in config:
-        raise RuntimeError("Unexpected FFmpeg license configuration")
+    normalized_license = " ".join(license_text.split())
+    if "GNU Lesser General Public License" not in normalized_license or "version 2.1" not in normalized_license or "--enable-gpl" in config or "--enable-nonfree" in config:
+        raise RuntimeError("Unexpected FFmpeg license configuration: " + license_text)
     (notices / "buildconf.txt").write_text(config)
     (notices / "configure-arguments.json").write_text(json.dumps(args, indent=2) + "\n")
     (notices / "toolchain.txt").write_text(subprocess.check_output(["clang", "--version"], text=True) + subprocess.check_output(["xcodebuild", "-version"], text=True))

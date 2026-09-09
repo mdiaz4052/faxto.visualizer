@@ -63,7 +63,7 @@ def inspect(app):
             else:
                 candidates = [Path(expand(dep))]
             if not any(p.is_file() and p.resolve().is_relative_to(app.resolve()) for p in candidates):
-                raise ValueError(f"Unresolved/external runtime dependency: {binary}: {dep}")
+                raise ValueError(f"Unresolved/external runtime dependency: {binary}: {dep}; rpaths={rpaths}; candidates={candidates}")
         records.append({"file": str(binary.relative_to(app)), "architectures": architectures,
                         "minimum_macos": minimums, "dependencies": deps, "rpaths": rpaths})
     if not records or not helper.is_file() or not main.is_file(): raise ValueError("Incomplete app")
