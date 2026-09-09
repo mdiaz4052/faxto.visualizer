@@ -1,0 +1,52 @@
+name: Standalone macOS arm64
+on:
+  pull_request:
+    branches: [main, phase-0-foundation]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  application:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify native build host
+        run: |
+          test "$(uname -m)" = arm64
+          sw_vers
+          xcodebuild -version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.14"
+          architecture: arm64
+      - name: Install build dependencies
+        run: |
+          python -m pip install -r analyzer/requirements-lock.txt -r packaging/requirements-lock.txt
+          command -v gpg || brew install gnupg
+      - name: Analyzer and lifecycle regression
+        run: python -m unittest discover -s analyzer/tests -v
+      - name: Build, inspect, sign, and isolate application
+        run: python tools/build_macos.py
+      - name: Native Godot logical contracts
+        run: |
+          python tools/check_godot.py build/macos/godot/Godot.app/Contents/MacOS/Godot --headless --path godot --script res://tests/test_contracts.gd
+          python tools/check_godot.py build/macos/godot/Godot.app/Contents/MacOS/Godot --headless --path godot --script res://tests/test_standalone.gd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FaXto-Visualizer-arm64-adhoc
+          path: |
+            dist/FaXto-Visualizer-arm64-adhoc.zip
+            dist/FFmpeg-corresponding-source.zip
+            dist/bundle-inspection.json
+            dist/build-info.json
+          if-no-files-found: error
+          retention-days: 30

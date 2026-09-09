@@ -1,0 +1,29 @@
+FaXto Visualizer — Third-party software
+
+Godot Engine 4.7.2 (MIT), Python 3.12.14 (PSF and bundled component licenses),
+NumPy 2.3.5 (BSD and bundled BLAS/LAPACK licenses), and PyInstaller 6.22.2
+(GPL with its bootloader exception) are included in this application.
+The full installed distributions' notices and Godot's third-party copyright
+file are collected next to this file when the application is built.
+
+FFmpeg 8.0.1: built from unmodified signed upstream source with shared libraries,
+without GPL, nonfree, x264, or automatically detected third-party libraries.
+This build is LGPL 2.1 or later; see FFmpeg/COPYING.LGPLv2.1 and LICENSE.md.
+Video uses Apple's VideoToolbox H.264 encoder and FFmpeg's native AAC encoder.
+No FFmpeg binary from a developer's PATH or Homebrew is redistributed.
+
+Corresponding FFmpeg source (including configure), its upstream signature,
+configure arguments, toolchain/build record, and the build script are included
+in FFmpeg/ and the downloadable corresponding-source archive. You may rebuild
+and replace the shared FFmpeg libraries in Contents/Helpers/ffmpeg/lib. These
+libraries use relative install names. Modifying code invalidates its macOS
+signature; locally sign the modified app again. A developer build does not
+require proprietary signing credentials. Reverse engineering for debugging
+modifications to the LGPL-covered libraries is permitted by their license.
+
+Upstream: https://godotengine.org/license/ | https://www.python.org/psf/license/
+https://numpy.org/doc/stable/license.html | https://pyinstaller.org/
+https://ffmpeg.org/legal.html | https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz
+
+These notices grant no new license to FaXto's project code, music, or artwork.
+There is no automatic upload of music or diagnostics.
