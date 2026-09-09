@@ -10,7 +10,9 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = json.loads((ROOT / "packaging/versions.json").read_text())["godot"]
+VERSIONS_FILE = ROOT / "packaging/versions.json"
+if not VERSIONS_FILE.is_file(): VERSIONS_FILE = Path(__file__).with_name("versions.json")
+VERSION = json.loads(VERSIONS_FILE.read_text())["godot"]
 
 
 def fetch(url, destination):

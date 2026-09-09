@@ -35,6 +35,7 @@ def collect_notices(notices):
                     target.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, target)
     fetch(f"https://raw.githubusercontent.com/python/cpython/v{VERSIONS['python']}/LICENSE", notices / "PYTHON-LICENSE.txt")
+    fetch(f"https://raw.githubusercontent.com/python/cpython/v{VERSIONS['python']}/Doc/license.rst", notices / "PYTHON-THIRD-PARTY-LICENSES.rst")
     fetch(f"https://raw.githubusercontent.com/godotengine/godot/{VERSIONS['godot']}-stable/LICENSE.txt", notices / "GODOT-LICENSE.txt")
     fetch(f"https://raw.githubusercontent.com/godotengine/godot/{VERSIONS['godot']}-stable/COPYRIGHT.txt", notices / "GODOT-COPYRIGHT.txt")
 

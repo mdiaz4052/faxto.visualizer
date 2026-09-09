@@ -128,6 +128,8 @@ for that series; 3.12.14 is not available there. CI tests both 3.12.14 and
 results within the native build.
 
 Pins are in `packaging/versions.json` and both requirements locks. The builder
+enables the ETC2/ASTC import format required by Godot’s arm64 export validator
+(the selected renderer and Signal Field drawing remain unchanged),
 fetches matching official Godot binary/templates and verifies their upstream
 SHA-512 manifest. FFmpeg 8.0.1 source is SHA-256 pinned and its upstream detached
 signature is checked against the pinned release-key fingerprint. The builder

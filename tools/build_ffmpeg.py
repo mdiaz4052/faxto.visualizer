@@ -8,18 +8,21 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 
 from download_godot import fetch
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSIONS = json.loads((ROOT / "packaging/versions.json").read_text())
+VERSIONS_FILE = ROOT / "packaging/versions.json"
+if not VERSIONS_FILE.is_file(): VERSIONS_FILE = Path(__file__).with_name("versions.json")
+VERSIONS = json.loads(VERSIONS_FILE.read_text())
 
 
 def run(*args, **kwargs):
     return subprocess.run([str(a) for a in args], check=True, **kwargs)
 
 
-def build(destination, work, notices):
+def _build_native(destination, work, notices):
     if sys.platform != "darwin" or platform.machine() != "arm64":
         raise RuntimeError("FFmpeg product builds require native Apple Silicon macOS")
     work.mkdir(parents=True, exist_ok=True)
@@ -82,9 +85,22 @@ def build(destination, work, notices):
     (notices / "buildconf.txt").write_text(config)
     (notices / "configure-arguments.json").write_text(json.dumps(args, indent=2) + "\n")
     (notices / "toolchain.txt").write_text(subprocess.check_output(["clang", "--version"], text=True) + subprocess.check_output(["xcodebuild", "-version"], text=True))
-    for path in (archive, signature, key, source / "COPYING.LGPLv2.1", source / "LICENSE.md", Path(__file__), ROOT / "tools/download_godot.py", ROOT / "packaging/versions.json"):
+    for path in (archive, signature, key, source / "COPYING.LGPLv2.1", source / "LICENSE.md", Path(__file__), Path(__file__).with_name("download_godot.py"), VERSIONS_FILE):
         shutil.copy2(path, notices / path.name)
     # Headers/pkgconfig are build products useful for relinking, not runtime code.
+    return destination
+
+
+def build(destination, work, notices):
+    # FFmpeg's generated linker flags do not quote spaces in install-name paths.
+    # Compile under a private space-free prefix, rewrite install names, then copy
+    # the closed runtime into the user-facing application bundle.
+    work.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="faxto-ffmpeg-") as temporary:
+        build_root = Path(temporary)
+        if " " in str(build_root): raise RuntimeError("FFmpeg build temporary path must not contain spaces")
+        prefix = _build_native(build_root / "prefix", build_root / "source", notices)
+        shutil.copytree(prefix, destination, symlinks=True)
     return destination
 
 

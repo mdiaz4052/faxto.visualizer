@@ -79,6 +79,35 @@ def smoke(app):
             assert cached["cache_key"] == result["cache_key"]
             invalid = isolated / "invalid.wav"; invalid.write_text("broken")
             assert job("analyze", wav=str(invalid))[0]["state"] == "failed"
+            # Exercise cancellation inside the actual frozen runtime while the
+            # source checkout is unavailable, then confirm its child was reaped.
+            long_wav = isolated / "cancel.wav"
+            with wave.open(str(long_wav), "wb") as out:
+                out.setnchannels(1); out.setsampwidth(2); out.setframerate(8000)
+                out.writeframes(b"\0\0" * (8000 * 240))
+            cancel_job = isolated / "cancel-job"; cancel_job.mkdir()
+            cancel_request = {"protocol": 1, "job_id": "cancel-job", "parent_pid": os.getpid(),
+                              "operation": "analyze", "wav": str(long_wav), "cache_dir": str(isolated / "fresh-cache")}
+            cancel_path = cancel_job / "request.json"; cancel_path.write_text(json.dumps(cancel_request))
+            process = subprocess.Popen([str(helper), "--job", str(cancel_path)], env=environment, cwd=isolated)
+            try:
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    stage_path = cancel_job / "status.json"
+                    if stage_path.exists() and json.loads(stage_path.read_text())["stage"] == "Analyzing musical features": break
+                    time.sleep(0.01)
+                else: raise AssertionError("Frozen analyzer did not reach analysis stage")
+                worker = json.loads((cancel_job / "child.json").read_text())["pid"]
+                (cancel_job / "cancel").touch()
+                assert process.wait(timeout=5) == 2
+                assert json.loads((cancel_job / "result.json").read_text())["state"] == "cancelled"
+                try: os.kill(worker, 0)
+                except ProcessLookupError: pass
+                else: raise AssertionError("Frozen analyzer orphaned its worker")
+            finally:
+                if process.poll() is None:
+                    (cancel_job / "cancel").touch()
+                    process.wait(timeout=5)
             encoders = subprocess.check_output([str(encoder), "-encoders"], env=environment, cwd=isolated, stderr=subprocess.STDOUT, text=True)
             assert "h264_videotoolbox" in encoders and "libx264" not in encoders
             options = {"frames": str(frames), "start": 0.37, "end": 0.78, "fps": 12, "frame_count": 5}
