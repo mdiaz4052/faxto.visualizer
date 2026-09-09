@@ -57,6 +57,14 @@ def build():
     run(sys.executable, ROOT / "tools/check_godot.py", godot, "--headless", "--editor", "--path", ROOT / "godot", "--import")
     run(sys.executable, ROOT / "tools/check_godot.py", godot, "--headless", "--path", ROOT / "godot", "--export-release", "macOS Apple Silicon", app)
     contents = app / "Contents"
+    # Official 4.7.2 macOS templates contain universal executables only. Export
+    # those verified templates, then thin the product executable explicitly.
+    exported_info = plistlib.loads((contents / "Info.plist").read_bytes())
+    executable = contents / "MacOS" / exported_info["CFBundleExecutable"]
+    thin = executable.with_name(executable.name + ".arm64")
+    run("lipo", executable, "-thin", "arm64", "-output", thin)
+    thin.chmod(0o755)
+    thin.replace(executable)
     notices = contents / "Resources/ThirdPartyNotices"
     notices.mkdir(parents=True, exist_ok=True)
     helpers = contents / "Helpers"

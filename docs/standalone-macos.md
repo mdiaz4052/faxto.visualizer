@@ -131,7 +131,9 @@ Pins are in `packaging/versions.json` and both requirements locks. The builder
 enables the ETC2/ASTC import format required by Godot’s arm64 export validator
 (the selected renderer and Signal Field drawing remain unchanged),
 fetches matching official Godot binary/templates and verifies their upstream
-SHA-512 manifest. FFmpeg 8.0.1 source is SHA-256 pinned and its upstream detached
+SHA-512 manifest. Official macOS templates contain a universal engine executable;
+the builder explicitly thins it to arm64 before adding the arm64-only helpers
+and checking every native dependency. The delivered app is not universal. FFmpeg 8.0.1 source is SHA-256 pinned and its upstream detached
 signature is checked against the pinned release-key fingerprint. The builder
 compiles a controlled, shared-library LGPL-only FFmpeg with autodetection,
 network, GPL, and nonfree components disabled. It fixes relative install names,
