@@ -24,6 +24,10 @@ def version(value):
     return tuple((list(map(int, value.split("."))) + [0, 0])[:3])
 
 
+def loaded_libraries(commands):
+    return re.findall(r"cmd LC_(?:LOAD|LOAD_WEAK|REEXPORT|LOAD_UPWARD|LAZY_LOAD)_DYLIB\s+cmdsize\s+\d+\s+name (.+?) \(offset", commands)
+
+
 def inspect(app):
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
     main = app / "Contents/MacOS" / info["CFBundleExecutable"]
@@ -52,11 +56,11 @@ def inspect(app):
             expanded = Path(expand(rp))
             if expanded.is_absolute() and not expanded.resolve().is_relative_to(app.resolve()):
                 raise ValueError(f"External runtime search path: {binary}: {rp}")
-        deps = []
-        for line in output("otool", "-arch", "arm64", "-L", binary).splitlines()[1:]:
-            dep = line.strip().split(" (", 1)[0]
-            if not dep or dep.endswith(":"): continue
-            deps.append(dep)
+        # otool -L also prints LC_ID_DYLIB (the library's own install name).
+        # That is not a load dependency: PyInstaller opens Python by absolute
+        # bundle path. Inspect only actual load/re-export commands.
+        deps = loaded_libraries(commands)
+        for dep in deps:
             if dep.startswith(("/System/Library/", "/usr/lib/")): continue
             if dep.startswith("@rpath/"):
                 candidates = [Path(expand(rp)) / dep[len("@rpath/"):] for rp in rpaths]
