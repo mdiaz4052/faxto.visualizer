@@ -5,6 +5,9 @@ NumPy 2.3.5 (BSD and bundled BLAS/LAPACK licenses), and PyInstaller 6.22.2
 (GPL with its bootloader exception) are included in this application.
 The full installed distributions' notices and Godot's third-party copyright
 file are collected next to this file when the application is built.
+Python macOS runtime components also include OpenSSL 3.0.21 (Apache 2.0),
+ncurses 6.5 (MIT-style license), and XZ 5.2.3/liblzma (public-domain library
+code); their notices are included here. No command-line XZ tools are bundled.
 
 FFmpeg 8.0.1: built from unmodified signed upstream source with shared libraries,
 without GPL, nonfree, x264, or automatically detected third-party libraries.

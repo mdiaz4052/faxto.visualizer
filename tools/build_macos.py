@@ -1,5 +1,8 @@
 """Native developer/CI entry point; never run from the product UI."""
 import importlib.metadata
+import hashlib
+import tarfile
+import tempfile
 import json
 import os
 from pathlib import Path
@@ -37,6 +40,20 @@ def collect_notices(notices):
     fetch(f"https://raw.githubusercontent.com/python/cpython/v{VERSIONS['python']}/LICENSE", notices / "PYTHON-LICENSE.txt")
     fetch(f"https://raw.githubusercontent.com/python/cpython/v{VERSIONS['python']}/Doc/license.rst", notices / "PYTHON-THIRD-PARTY-LICENSES.rst")
     fetch(f"https://raw.githubusercontent.com/python/cpython/v{VERSIONS['python']}/Mac/BuildScript/resources/License.rtf", notices / "PYTHON-MACOS-LICENSES.rtf")
+    # CPython's pinned macOS installer recipe bundles OpenSSL, ncurses, and
+    # liblzma; include their own notices as well as CPython's general license.
+    for filename in ("LICENSE.txt", "AUTHORS.md"):
+        fetch("https://raw.githubusercontent.com/openssl/openssl/openssl-3.0.21/" + filename,
+              notices / ("OPENSSL-" + filename))
+    fetch("https://raw.githubusercontent.com/tukaani-project/xz/v5.2.3/COPYING", notices / "XZ-LIBLZMA-COPYING.txt")
+    with tempfile.TemporaryDirectory(prefix="faxto-notices-") as temporary:
+        archive = Path(temporary) / "ncurses-6.5.tar.gz"
+        fetch("https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz", archive)
+        # Checksum from the v3.13.15 CPython Mac/BuildScript/build-installer.py recipe.
+        if hashlib.sha256(archive.read_bytes()).hexdigest() != "136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6":
+            raise ValueError("ncurses notice source checksum mismatch")
+        with tarfile.open(archive) as source:
+            (notices / "NCURSES-COPYING.txt").write_bytes(source.extractfile("ncurses-6.5/COPYING").read())
     fetch(f"https://raw.githubusercontent.com/godotengine/godot/{VERSIONS['godot']}-stable/LICENSE.txt", notices / "GODOT-LICENSE.txt")
     fetch(f"https://raw.githubusercontent.com/godotengine/godot/{VERSIONS['godot']}-stable/COPYRIGHT.txt", notices / "GODOT-COPYRIGHT.txt")
 
