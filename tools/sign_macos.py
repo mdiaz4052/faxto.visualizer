@@ -21,12 +21,21 @@ def sign(app, identity="-", profile=None):
     with tempfile.TemporaryDirectory() as temp:
         entitlements = Path(temp) / "godot.plist"
         entitlements.write_bytes(plistlib.dumps({"com.apple.security.cs.allow-jit": True}))
+        app_bundles = [*app.rglob("*.app"), app]
+        main_executables = set()
+        for bundle in app_bundles:
+            info = plistlib.loads((bundle / "Contents/Info.plist").read_bytes())
+            main_executables.add(bundle / "Contents/MacOS" / info["CFBundleExecutable"])
         for binary in sorted(native_files(app), key=lambda p: len(p.parts), reverse=True):
-            extra = ["--entitlements", str(entitlements)] if binary.parent == app / "Contents/MacOS" else []
-            run("codesign", *flags, *extra, binary)
+            # Signing a bundle's main executable also signs its enclosing bundle;
+            # defer it until all nested code/frameworks are complete.
+            if binary not in main_executables:
+                run("codesign", *flags, binary)
         for framework in sorted(app.rglob("*.framework"), key=lambda p: len(p.parts), reverse=True):
             if not framework.is_symlink(): run("codesign", *flags, framework)
-        run("codesign", *flags, "--entitlements", entitlements, app)
+        for bundle in sorted(app_bundles, key=lambda p: len(p.parts), reverse=True):
+            extra = ["--entitlements", str(entitlements)] if bundle == app else []
+            run("codesign", *flags, *extra, bundle)
         run("codesign", "--verify", "--deep", "--strict", "--verbose=2", app)
         if profile:
             archive = Path(temp) / "FaXto-Notarization.zip"

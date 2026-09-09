@@ -74,7 +74,7 @@ never uploaded automatically.
 
 ## Helper ownership and cancellation
 
-`AppPaths` locates `Contents/Helpers/analyzer/faxto-helper` relative to the running
+`AppPaths` locates `Contents/Helpers/analyzer.app/Contents/MacOS/faxto-helper` relative to the running
 executable in every exported build, including debug exports. It never searches
 PATH or the repository in release mode. Editor-only development can use the
 repo `.venv`, the old `user://analyzer-environment`, or `FAXTO_ANALYZER_PYTHON`.
@@ -138,7 +138,8 @@ signature is checked against the pinned release-key fingerprint. The builder
 compiles a controlled, shared-library LGPL-only FFmpeg with autodetection,
 network, GPL, and nonfree components disabled. It fixes relative install names,
 collects notices/source/configuration records, freezes the analyzer with
-PyInstaller one-directory mode, checks every native binary for arm64, deployment
+PyInstaller one-directory mode wrapped in an internal macOS bundle (code in
+Frameworks/MacOS and data in Resources, with no helper UI), checks every native binary for arm64, deployment
 target, and library closure, then signs nested code and the app ad hoc.
 
 The build runs a relocated-copy smoke test with developer environment variables

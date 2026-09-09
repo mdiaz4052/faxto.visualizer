@@ -8,7 +8,7 @@ static func contents_directory() -> String:
 
 static func helper_command() -> Dictionary:
 	if not OS.has_feature("editor"):
-		var bundled := contents_directory().path_join("Helpers/analyzer/faxto-helper")
+		var bundled := contents_directory().path_join("Helpers/analyzer.app/Contents/MacOS/faxto-helper")
 		return {"executable": bundled, "arguments": PackedStringArray()}
 	var python := OS.get_environment("FAXTO_ANALYZER_PYTHON")
 	if python.is_empty():

@@ -90,7 +90,8 @@ def _build_native(destination, work, notices):
     (notices / "toolchain.txt").write_text(subprocess.check_output(["clang", "--version"], text=True) + subprocess.check_output(["xcodebuild", "-version"], text=True))
     for path in (archive, signature, key, source / "COPYING.LGPLv2.1", source / "LICENSE.md", Path(__file__), Path(__file__).with_name("download_godot.py"), VERSIONS_FILE):
         shutil.copy2(path, notices / path.name)
-    # Headers/pkgconfig are build products useful for relinking, not runtime code.
+    # The complete source includes development headers; the product keeps only
+    # executables and dylibs under its code-signing runtime directories.
     return destination
 
 
@@ -103,7 +104,10 @@ def build(destination, work, notices):
         build_root = Path(temporary)
         if " " in str(build_root): raise RuntimeError("FFmpeg build temporary path must not contain spaces")
         prefix = _build_native(build_root / "prefix", build_root / "source", notices)
-        shutil.copytree(prefix, destination, symlinks=True)
+        destination.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(prefix / "bin", destination / "bin", symlinks=True)
+        shutil.copytree(prefix / "lib", destination / "lib", symlinks=True,
+                        ignore=shutil.ignore_patterns("pkgconfig", "*.a"))
     return destination
 
 

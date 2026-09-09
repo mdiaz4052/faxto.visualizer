@@ -36,6 +36,7 @@ def collect_notices(notices):
                     shutil.copy2(source, target)
     fetch(f"https://raw.githubusercontent.com/python/cpython/v{VERSIONS['python']}/LICENSE", notices / "PYTHON-LICENSE.txt")
     fetch(f"https://raw.githubusercontent.com/python/cpython/v{VERSIONS['python']}/Doc/license.rst", notices / "PYTHON-THIRD-PARTY-LICENSES.rst")
+    fetch(f"https://raw.githubusercontent.com/python/cpython/v{VERSIONS['python']}/Mac/BuildScript/resources/License.rtf", notices / "PYTHON-MACOS-LICENSES.rtf")
     fetch(f"https://raw.githubusercontent.com/godotengine/godot/{VERSIONS['godot']}-stable/LICENSE.txt", notices / "GODOT-LICENSE.txt")
     fetch(f"https://raw.githubusercontent.com/godotengine/godot/{VERSIONS['godot']}-stable/COPYRIGHT.txt", notices / "GODOT-COPYRIGHT.txt")
 
@@ -69,11 +70,10 @@ def build():
     notices.mkdir(parents=True, exist_ok=True)
     helpers = contents / "Helpers"
     helpers.mkdir(exist_ok=True)
-    run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--name", "faxto-helper",
-        "--target-architecture", "arm64", "--paths", ROOT / "analyzer/src", "--collect-all", "numpy",
-        "--distpath", work / "frozen", "--workpath", work / "pyinstaller", "--specpath", work,
-        ROOT / "analyzer/src/faxto_analyzer/standalone.py")
-    shutil.copytree(work / "frozen/faxto-helper", helpers / "analyzer", symlinks=True)
+    run(sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
+        "--distpath", work / "frozen", "--workpath", work / "pyinstaller",
+        ROOT / "packaging/analyzer.spec")
+    shutil.copytree(work / "frozen/faxto-helper.app", helpers / "analyzer.app", symlinks=True)
     build_ffmpeg(helpers / "ffmpeg", work / "ffmpeg", notices / "FFmpeg")
     collect_notices(notices)
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()

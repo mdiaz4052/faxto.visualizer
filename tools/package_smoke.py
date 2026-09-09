@@ -43,7 +43,7 @@ def smoke(app):
         # them. Jobs and caches explicitly use the fresh private directory below.
         for key in ("HOME", "USER", "LOGNAME"):
             if key in os.environ: environment[key] = os.environ[key]
-        helper = moved / "Contents/Helpers/analyzer/faxto-helper"
+        helper = moved / "Contents/Helpers/analyzer.app/Contents/MacOS/faxto-helper"
         encoder = moved / "Contents/Helpers/ffmpeg/bin/ffmpeg"
         probe = encoder.with_name("ffprobe")
         frames = isolated / "frames"; frames.mkdir()

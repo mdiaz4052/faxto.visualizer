@@ -31,7 +31,7 @@ def loaded_libraries(commands):
 def inspect(app):
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
     main = app / "Contents/MacOS" / info["CFBundleExecutable"]
-    helper = app / "Contents/Helpers/analyzer/faxto-helper"
+    helper = app / "Contents/Helpers/analyzer.app/Contents/MacOS/faxto-helper"
     records = []
     for binary in native_files(app):
         architectures = output("lipo", "-archs", binary).strip().split()
@@ -41,7 +41,7 @@ def inspect(app):
         minimums += re.findall(r"LC_VERSION_MIN_MACOSX\s+cmdsize\s+\d+\s+version\s+([\d.]+)", commands)
         if not minimums or any(version(v) > version("15.0") for v in minimums):
             raise ValueError(f"Unsupported minimum macOS for {binary}: {minimums}")
-        executable = helper if "Helpers/analyzer/" in str(binary) else main
+        executable = helper if "Helpers/analyzer.app/" in str(binary) else main
         if "Helpers/ffmpeg/" in str(binary): executable = app / "Contents/Helpers/ffmpeg/bin/ffmpeg"
 
         def expand(value):

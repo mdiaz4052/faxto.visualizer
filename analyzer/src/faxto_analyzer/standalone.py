@@ -125,8 +125,9 @@ def analyze(request: dict, job: Path) -> dict:
 
 def ffmpeg_path(request: dict) -> Path:
     if getattr(sys, "frozen", False):
-        # Contents/Helpers/analyzer/faxto-helper -> sibling ffmpeg/bin/ffmpeg
-        return Path(sys.executable).resolve().parents[1] / "ffmpeg" / "bin" / "ffmpeg"
+        # Contents/Helpers/analyzer.app/Contents/MacOS/faxto-helper
+        # -> Contents/Helpers/ffmpeg/bin/ffmpeg
+        return Path(sys.executable).resolve().parents[3] / "ffmpeg" / "bin" / "ffmpeg"
     path = request.get("dev_ffmpeg") or shutil.which("ffmpeg")
     if not path:
         raise FileNotFoundError("Development FFmpeg was not found")
