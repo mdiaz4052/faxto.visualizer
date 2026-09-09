@@ -14,3 +14,12 @@ Use the regular Godot build. The `.NET` edition exists for C# projects and is no
 `analyzer/requirements-lock.txt` reproduces the tested DSP dependency. `pyproject.toml` permits compatible NumPy 2.x updates for ordinary development.
 
 The GUI's **Setup Analyzer** action creates a private virtual environment in Godot's per-user application-data directory and installs the pinned requirements there. It does not alter the system Python environment. Python 3 itself must already exist; missing Python is reported in the interface.
+
+## Phase 0.1 standalone environment
+
+The historical setup above describes the foundation editor workflow. Phase 0.1
+removes the GUI dependency-install step and ships a frozen Python 3.13.15 /
+NumPy 2.3.5 helper plus a controlled FFmpeg 8.0.1 build. Godot stays at 4.7.2
+with Compatibility rendering. Product target: Apple Silicon, macOS 15.0+.
+See [standalone build and validation boundaries](standalone-macos.md); actual
+CI success and desktop acceptance must be checked for the delivered commit.

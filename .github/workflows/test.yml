@@ -1,48 +1,47 @@
 name: Phase 0 contracts
-
 on:
   push:
+    branches: [main, phase-0-foundation]
   pull_request:
-
+permissions:
+  contents: read
 jobs:
   python:
+    strategy:
+      matrix:
+        python-version: ["3.12.14", "3.13.15"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - run: python -m pip install -r analyzer/requirements-lock.txt
-      - run: PYTHONPATH=analyzer/src python -m unittest discover -s analyzer/tests -v
-      - run: python -m compileall -q analyzer/src analyzer/tests
-
+      - run: python -m unittest discover -s analyzer/tests -v
+      - run: python -m compileall -q analyzer/src analyzer/tests tools
+      - run: git diff --check
   godot:
     runs-on: ubuntu-latest
-    env:
-      GODOT_VERSION: "4.7.2"
     steps:
       - uses: actions/checkout@v4
-      - name: Download official Godot build
-        run: |
-          curl --fail --location --retry 3 \
-            --output /tmp/godot.zip \
-            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          unzip -q /tmp/godot.zip -d /tmp/godot
-          mv "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" /tmp/godot/godot
-          chmod +x /tmp/godot/godot
-          /tmp/godot/godot --version
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.14"
+      - name: Download and verify official Godot
+        run: python tools/download_godot.py /tmp/faxto-godot
       - name: Import and parse project
-        run: |
-          set -o pipefail
-          /tmp/godot/godot --headless --editor --path godot --quit-after 2 2>&1 | tee /tmp/godot-import.log
-          ! grep -E "SCRIPT ERROR|Parse Error|Failed to load" /tmp/godot-import.log
+        run: python tools/check_godot.py /tmp/faxto-godot/Godot_v4.7.2-stable_linux.x86_64 --headless --editor --path godot --import
       - name: Instantiate application shell
+        run: python tools/check_godot.py /tmp/faxto-godot/Godot_v4.7.2-stable_linux.x86_64 --headless --path godot --quit-after 3
+      - name: Run deterministic and standalone contracts
         run: |
-          set -o pipefail
-          /tmp/godot/godot --headless --path godot --quit-after 2 2>&1 | tee /tmp/godot-app.log
-          ! grep -E "SCRIPT ERROR|Parse Error|Failed to load" /tmp/godot-app.log
-      - name: Run deterministic Godot contracts
-        run: |
-          set -o pipefail
-          /tmp/godot/godot --headless --path godot --script res://tests/test_contracts.gd 2>&1 | tee /tmp/godot-contracts.log
-          ! grep -E "SCRIPT ERROR|Parse Error|Failed to load" /tmp/godot-contracts.log
+          python tools/check_godot.py /tmp/faxto-godot/Godot_v4.7.2-stable_linux.x86_64 --headless --path godot --script res://tests/test_contracts.gd
+          python tools/check_godot.py /tmp/faxto-godot/Godot_v4.7.2-stable_linux.x86_64 --headless --path godot --script res://tests/test_standalone.gd
+      - name: Render fixed viewport and short PNG sequence
+        run: xvfb-run -a python tools/check_godot.py /tmp/faxto-godot/Godot_v4.7.2-stable_linux.x86_64 --audio-driver Dummy --path godot --script res://tests/test_render_export.gd

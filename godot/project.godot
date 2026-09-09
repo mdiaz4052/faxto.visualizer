@@ -3,6 +3,7 @@ config_version=5
 
 [application]
 config/name="FaXto Visualizer"
+config/version="0.1.0"
 run/main_scene="res://ui/main.tscn"
 
 [display]
@@ -14,5 +15,6 @@ window/size/mode=2
 window/stretch/mode="canvas_items"
 
 [rendering]
+textures/vram_compression/import_etc2_astc=true
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
