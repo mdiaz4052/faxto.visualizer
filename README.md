@@ -15,7 +15,7 @@ no Godot editor, separately installed Python/NumPy/FFmpeg, Terminal, or network.
 See [standalone use, build, signing, and GUI checks](docs/standalone-macos.md).
 A successful build is separate from the remaining hands-on macOS acceptance.
 
-For editor development, use Godot 4.7.2 (regular edition) and Python 3.12.14:
+For editor development, use Godot 4.7.2 (regular edition) and Python 3.13.15:
 
 ```sh
 python3 -m venv .venv

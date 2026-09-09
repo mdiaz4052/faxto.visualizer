@@ -114,13 +114,18 @@ different hardware are not promised.
 ## Repeatable developer build
 
 Build on native Apple Silicon macOS 15 with Xcode Command Line Tools, Python
-3.12.14, and GnuPG available. Only developer/CI machines need these commands:
+3.13.15, and GnuPG available. Only developer/CI machines need these commands:
 
 ```sh
-python3.12 -m venv .venv
+python3.13 -m venv .venv
 .venv/bin/python -m pip install -r analyzer/requirements-lock.txt -r packaging/requirements-lock.txt
 .venv/bin/python tools/build_macos.py
 ```
+
+Python 3.13.15 is used because GitHub provides current native macOS binaries
+for that series; 3.12.14 is not available there. CI tests both 3.12.14 and
+3.13.15 with unchanged NumPy 2.3.5 and DSP, and compares frozen/unfrozen
+results within the native build.
 
 Pins are in `packaging/versions.json` and both requirements locks. The builder
 fetches matching official Godot binary/templates and verifies their upstream

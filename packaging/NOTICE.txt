@@ -1,6 +1,6 @@
 FaXto Visualizer — Third-party software
 
-Godot Engine 4.7.2 (MIT), Python 3.12.14 (PSF and bundled component licenses),
+Godot Engine 4.7.2 (MIT), Python 3.13.15 (PSF and bundled component licenses),
 NumPy 2.3.5 (BSD and bundled BLAS/LAPACK licenses), and PyInstaller 6.22.2
 (GPL with its bootloader exception) are included in this application.
 The full installed distributions' notices and Godot's third-party copyright
