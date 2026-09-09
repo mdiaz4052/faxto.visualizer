@@ -45,7 +45,7 @@ def build():
         raise SystemExit("Build requires a native Apple Silicon macOS machine; this is not a cross-compiler")
     if platform.python_version() != VERSIONS["python"]:
         raise SystemExit(f"Use Python {VERSIONS['python']} for this build")
-    for command in ("clang", "make", "gpg", "codesign", "ditto", "otool", "lipo"):
+    for command in ("clang", "make", "gpg", "gpgv", "codesign", "ditto", "otool", "lipo"):
         if not shutil.which(command): raise SystemExit(f"Missing developer build tool: {command}")
     work = ROOT / "build/macos"
     work.mkdir(parents=True, exist_ok=True)

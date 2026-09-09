@@ -40,9 +40,11 @@ def _build_native(destination, work, notices):
     primary_fingerprint = next(line.split(":")[9] for line in key_info.splitlines() if line.startswith("fpr:"))
     if primary_fingerprint != VERSIONS["ffmpeg_signing_fingerprint"]:
         raise ValueError("Unexpected FFmpeg signing key")
-    keyring = work / "gnupg"; keyring.mkdir(mode=0o700, exist_ok=True)
-    run("gpg", "--homedir", keyring, "--batch", "--import", key)
-    run("gpg", "--homedir", keyring, "--batch", "--verify", signature, archive)
+    # Detached public-key verification needs no signing agent/socket. A long
+    # macOS temporary path can exceed the agent socket path limit.
+    keyring = work / "release-key.gpg"
+    run("gpg", "--batch", "--yes", "--dearmor", "--output", keyring, key)
+    run("gpgv", "--keyring", keyring, signature, archive)
     with tarfile.open(archive) as tar: tar.extractall(work, filter="data")
     source = work / f"ffmpeg-{version}"
     # Disable autodetection so Homebrew and changing runner packages cannot alter
